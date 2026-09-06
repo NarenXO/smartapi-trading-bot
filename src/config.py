@@ -22,6 +22,15 @@ class Config:
     MAX_QTY_PER_TRADE = int(os.getenv("MAX_QTY_PER_TRADE", "1"))
     MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "3"))
     ORDER_TYPE = os.getenv("ORDER_TYPE", "MARKET")
+
+    # Phase 7: Advanced Risk & Strategy Controls
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+    STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", "1.5"))
+    TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "3.0"))
+    MAX_CONSECUTIVE_LOSSES = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "3"))
+    COOLDOWN_MINUTES = int(os.getenv("COOLDOWN_MINUTES", "15"))
+    ATR_MIN_PCT = float(os.getenv("ATR_MIN_PCT", "0.1"))
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)

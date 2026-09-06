@@ -17,6 +17,20 @@ class MarketClock:
         now = MarketClock.now_ist()
         if now.weekday() >= 5:
             return False
+            
+        # Hardcoded NSE Holidays 2024/2025 (YYYY-MM-DD)
+        nse_holidays = [
+            "2024-01-26", "2024-03-08", "2024-03-25", "2024-04-11", 
+            "2024-04-17", "2024-05-01", "2024-06-17", "2024-07-17", 
+            "2024-08-15", "2024-10-02", "2024-11-01", "2024-11-15", 
+            "2024-12-25", "2025-01-26", "2025-02-26", "2025-03-14",
+            "2025-03-31", "2025-04-10", "2025-04-14", "2025-04-18",
+            "2025-05-01", "2025-08-15", "2025-08-27", "2025-10-02",
+            "2025-10-21", "2025-11-05", "2025-12-25"
+        ]
+        if now.strftime("%Y-%m-%d") in nse_holidays:
+            return False
+
         market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
         market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
         return market_open <= now <= market_close
