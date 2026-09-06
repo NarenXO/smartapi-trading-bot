@@ -23,7 +23,16 @@ Automated algorithmic trading system using Angel One SmartAPI with technical mom
    # Update your Angel One API credentials in .env
    ```
 
-4. **Run Backtest Verification:**
+4. **Run Backtests:**
+
+   **Synthetic Test Run:**
    ```bash
    python run_backtest.py
+   ```
+
+   **Live/Historical Data Run:**
+   ```bash
+   python run_live_backtest.py RELIANCE
+   python run_live_backtest.py TCS
+   python run_live_backtest.py HDFCBANK
    ```

@@ -24,5 +24,5 @@ wheels/
 *.egg
 .pytest_cache/
 logs/
-data/
+data/*.json
 trades_*.csv
