@@ -46,13 +46,28 @@ class Strategy:
         data['predictive_prob'] = forecast_probs
         data['factor_predictive'] = (data['predictive_prob'] > 0.65).astype(float) * 0.20
 
+        # Calculate Intraday POC (Point of Control)
+        from src.volume_profile import VolumeProfile
+        poc = VolumeProfile.calculate_poc(data)
+        data['poc'] = poc
+        # Factor: Price must be above POC for Long positions (Support established)
+        data['factor_poc'] = (data['close'] > data['poc']).astype(float) * 0.15
+
+        # Adjust factor weights to equal 1.00 total
+        data['factor_ema'] = (data['ema_fast'] > data['ema_slow']).astype(float) * 0.15
+        data['factor_rsi'] = ((data['rsi'] > 45) & (data['rsi'] < 65)).astype(float) * 0.10
+        data['factor_vwap'] = (data['close'] > data['vwap']).astype(float) * 0.15
+        data['factor_vol'] = (data['volume'] > (data['vol_sma'] * 1.5)).astype(float) * 0.25
+        data['factor_predictive'] = (data['predictive_prob'] > 0.65).astype(float) * 0.20
+
         # 4. Total Confluence Score Calculation (0.00 to 1.00)
         data['confluence_score'] = (
             data['factor_ema'] +
             data['factor_rsi'] +
             data['factor_vwap'] +
             data['factor_vol'] +
-            data['factor_predictive']
+            data['factor_predictive'] +
+            data['factor_poc']
         )
 
         # 5. Signal Generation based on Confluence Threshold

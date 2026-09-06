@@ -40,7 +40,8 @@ class Config:
     # Phase 9: Dynamic Universe & Predictive Confluence
     UNIVERSE_MODE = os.getenv("UNIVERSE_MODE", "NIFTY50") # NIFTY50 or STATIC
     CONFLUENCE_THRESHOLD = float(os.getenv("CONFLUENCE_THRESHOLD", "0.80")) # 80% score required
-    MAX_SCAN_SYMBOLS = int(os.getenv("MAX_SCAN_SYMBOLS", "15"))
+    MAX_SCAN_SYMBOLS = int(os.getenv("MAX_SCAN_SYMBOLS", "50")) # Scan all for ranking
+    TOP_K_STOCKS = int(os.getenv("TOP_K_STOCKS", "5")) # Only actively trade top 5
 
     # Phase 10: Enterprise Quant Settings
     MARKET_REGIME_FILTER = os.getenv("MARKET_REGIME_FILTER", "True").lower() in ("true", "1", "yes")

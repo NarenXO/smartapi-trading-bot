@@ -132,6 +132,11 @@ class LiveTradingBot:
         if not self.token_map: return False
         self.fetcher = HistoricalDataFetcher(smart_api)
         
+        # Rank universe and filter down to TOP_K_STOCKS
+        from src.ranking import RankingEngine
+        ranker = RankingEngine(self.fetcher)
+        self.token_map = ranker.rank_symbols(self.token_map)
+        
         TelegramNotifier.send_message(
             f"QUANT_SYSTEM_READY\n"
             f"Mode: {'DRY_RUN' if Config.DRY_RUN else 'LIVE'}\n"
