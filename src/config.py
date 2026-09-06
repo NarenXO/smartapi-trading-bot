@@ -16,6 +16,12 @@ class Config:
     TARGET_SYMBOLS = [
         s.strip() for s in os.getenv("TARGET_SYMBOLS", "RELIANCE,TCS,HDFCBANK").split(",") if s.strip()
     ]
+
+    # Live Trading Safety Controls
+    DRY_RUN = os.getenv("DRY_RUN", "True").lower() in ("true", "1", "yes")
+    MAX_QTY_PER_TRADE = int(os.getenv("MAX_QTY_PER_TRADE", "1"))
+    MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "3"))
+    ORDER_TYPE = os.getenv("ORDER_TYPE", "MARKET")
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)

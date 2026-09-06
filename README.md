@@ -42,3 +42,19 @@ Automated algorithmic trading system using Angel One SmartAPI with technical mom
    python run_paper_trade.py
    ```
    The bot will authenticate, poll live 1-minute candles during 9:15–15:30 IST, and simulate trades. All paper trades are logged to logs/paper_trades_YYYYMMDD.csv.
+
+6. **Run Live Trading (Real Orders):**
+   ```bash
+   # First run in DRY_RUN mode (default - safe, no real orders)
+   python run_live_trade.py
+   
+   # When ready, edit .env and set DRY_RUN=False
+   # Then run again for real orders
+   python run_live_trade.py
+   ```
+   Safety Features:
+   - DRY_RUN=True (default): Logs orders but places none
+   - MAX_QTY_PER_TRADE=1: Starts with 1 share
+   - MAX_OPEN_POSITIONS=3: Caps simultaneous positions
+   - KILL_SWITCH: Create a file named KILL_SWITCH in project root to halt immediately
+   - Daily loss cap: Auto-stops at 3% loss
