@@ -31,6 +31,11 @@ class Config:
     MAX_CONSECUTIVE_LOSSES = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "3"))
     COOLDOWN_MINUTES = int(os.getenv("COOLDOWN_MINUTES", "15"))
     ATR_MIN_PCT = float(os.getenv("ATR_MIN_PCT", "0.1"))
+
+    # Phase 8: Production Hardening
+    TRAILING_SL_PCT = float(os.getenv("TRAILING_SL_PCT", "1.0"))
+    AUTO_SQUARE_OFF_HOUR = int(os.getenv("AUTO_SQUARE_OFF_HOUR", "15"))
+    AUTO_SQUARE_OFF_MINUTE = int(os.getenv("AUTO_SQUARE_OFF_MINUTE", "15"))
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)
