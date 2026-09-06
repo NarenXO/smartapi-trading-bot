@@ -58,3 +58,15 @@ Automated algorithmic trading system using Angel One SmartAPI with technical mom
    - MAX_OPEN_POSITIONS=3: Caps simultaneous positions
    - KILL_SWITCH: Create a file named KILL_SWITCH in project root to halt immediately
    - Daily loss cap: Auto-stops at 3% loss
+
+## 🌐 Easy Web Interface (No Terminal Required)
+
+Double click `Start_App.bat` or run:
+```bash
+streamlit run dashboard.py
+```
+This opens a clean browser dashboard at http://localhost:8501 where you can:
+- Start & Stop the trading bot with 1 click
+- View Live Capital, Profit/Loss, and Brokerage Taxes
+- View Live Trade History in a clean visual table
+- Trigger an Emergency Kill Switch anytime
