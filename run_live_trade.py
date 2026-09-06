@@ -76,10 +76,8 @@ class LiveTradingBot:
         if not smart_api: return False
 
         self.order_engine = OrderEngine(smart_api=smart_api, dry_run=Config.DRY_RUN)
-        inst_mgr = InstrumentManager()
-        for sym in self.symbols:
-            token = inst_mgr.get_token(sym, "NSE")
-            if token: self.token_map[sym] = token
+        from src.universe import UniverseScanner
+        self.token_map = UniverseScanner().get_target_tokens()
         
         if not self.token_map: return False
         self.fetcher = HistoricalDataFetcher(smart_api)

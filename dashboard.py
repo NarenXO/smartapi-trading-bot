@@ -92,7 +92,9 @@ c4.metric("SYSTEM_LATENCY", "42ms")
 tab1, tab2, tab3 = st.tabs(["[MARKET_DATA]", "[EXECUTION_LEDGER]", "[SYSTEM_LOGS]"])
 
 with tab1:
-    sym = st.selectbox("SYMBOL_SELECT", Config.TARGET_SYMBOLS)
+    from src.universe import NIFTY_50_SYMBOLS
+    available_symbols = NIFTY_50_SYMBOLS if Config.UNIVERSE_MODE == "NIFTY50" else Config.TARGET_SYMBOLS
+    sym = st.selectbox("SYMBOL_SELECT", available_symbols)
     df_chart = get_chart_data(sym)
     if df_chart is not None:
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])

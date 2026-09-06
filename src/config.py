@@ -36,6 +36,11 @@ class Config:
     TRAILING_SL_PCT = float(os.getenv("TRAILING_SL_PCT", "1.0"))
     AUTO_SQUARE_OFF_HOUR = int(os.getenv("AUTO_SQUARE_OFF_HOUR", "15"))
     AUTO_SQUARE_OFF_MINUTE = int(os.getenv("AUTO_SQUARE_OFF_MINUTE", "15"))
+
+    # Phase 9: Dynamic Universe & Predictive Confluence
+    UNIVERSE_MODE = os.getenv("UNIVERSE_MODE", "NIFTY50") # NIFTY50 or STATIC
+    CONFLUENCE_THRESHOLD = float(os.getenv("CONFLUENCE_THRESHOLD", "0.80")) # 80% score required
+    MAX_SCAN_SYMBOLS = int(os.getenv("MAX_SCAN_SYMBOLS", "15"))
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)
