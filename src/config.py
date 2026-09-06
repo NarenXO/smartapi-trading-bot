@@ -41,6 +41,12 @@ class Config:
     UNIVERSE_MODE = os.getenv("UNIVERSE_MODE", "NIFTY50") # NIFTY50 or STATIC
     CONFLUENCE_THRESHOLD = float(os.getenv("CONFLUENCE_THRESHOLD", "0.80")) # 80% score required
     MAX_SCAN_SYMBOLS = int(os.getenv("MAX_SCAN_SYMBOLS", "15"))
+
+    # Phase 10: Enterprise Quant Settings
+    MARKET_REGIME_FILTER = os.getenv("MARKET_REGIME_FILTER", "True").lower() in ("true", "1", "yes")
+    MAX_SPREAD_PCT = float(os.getenv("MAX_SPREAD_PCT", "0.20")) # 0.20% max allowed spread
+    RISK_PER_TRADE_FRACTION = float(os.getenv("RISK_PER_TRADE_FRACTION", "0.01")) # 1% account risk per trade
+    NIFTY_TOKEN = "99926000" # NSE Nifty 50 Token
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)

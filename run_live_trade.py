@@ -1,6 +1,8 @@
 import time
 import signal
 import logging
+import glob
+import pandas as pd
 from datetime import datetime
 from src.config import Config
 from src.auth import SmartAPIAuth
@@ -12,6 +14,7 @@ from src.risk_manager import RiskManager
 from src.trade_logger import TradeLogger
 from src.market_clock import MarketClock
 from src.telegram_bot import TelegramNotifier
+from src.metrics import PerformanceMetrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
@@ -29,6 +32,7 @@ class LiveTradingBot:
         self.fetcher = None
         self.positions = {}
         self.last_signal_time = {}
+        self.eod_sent = False
 
         signal.signal(signal.SIGINT, self._shutdown)
         signal.signal(signal.SIGTERM, self._shutdown)
@@ -37,6 +41,31 @@ class LiveTradingBot:
         logger.info("SHUTDOWN_SIGNAL_RECEIVED")
         TelegramNotifier.send_message("SYSTEM_SHUTDOWN_INITIATED")
         self.running = False
+
+    def check_market_regime(self) -> bool:
+        """Market Regime Guard: Verifies Nifty 50 is above 50-period EMA."""
+        if not Config.MARKET_REGIME_FILTER:
+            return True
+        try:
+            now = MarketClock.now_ist()
+            df_nifty = self.fetcher.fetch_candles(
+                symboltoken=Config.NIFTY_TOKEN,
+                interval="FIFTEEN_MINUTE",
+                from_date=(now - pd.Timedelta(days=5)).strftime("%Y-%m-%d 09:15"),
+                to_date=now.strftime("%Y-%m-%d %H:%M"),
+                exchange="NSE"
+            )
+            if df_nifty is not None and len(df_nifty) >= 50:
+                df_nifty['ema50'] = df_nifty['close'].ewm(span=50, adjust=False).mean()
+                latest_close = df_nifty.iloc[-1]['close']
+                latest_ema = df_nifty.iloc[-1]['ema50']
+                is_bullish = latest_close >= latest_ema
+                if not is_bullish:
+                    logger.warning(f"MARKET_REGIME_BEARISH: NIFTY50 ({latest_close:.1f}) < 50EMA ({latest_ema:.1f}). Blocking new Longs.")
+                return is_bullish
+        except Exception as e:
+            logger.error(f"MARKET_REGIME_CHECK_FAILED: {e}")
+        return True
 
     def fetch_with_retry(self, token: str, from_dt: str, to_dt: str):
         for attempt in range(3):
@@ -49,19 +78,40 @@ class LiveTradingBot:
                 time.sleep(2)
         return None
 
+    def send_eod_summary(self):
+        if self.eod_sent: return
+        try:
+            log_files = sorted(glob.glob("logs/paper_trades_*.csv"), reverse=True)
+            df_trades = pd.read_csv(log_files[0]) if log_files else pd.DataFrame()
+            m = PerformanceMetrics.calculate_metrics(df_trades, Config.DEFAULT_CAPITAL)
+            
+            summary = (
+                f"EOD PERFORMANCE REPORT\n"
+                f"Net PnL: Rs{m['net_pnl']:.2f}\n"
+                f"Win Rate: {m['win_rate_pct']}%\n"
+                f"Profit Factor: {m['profit_factor']}\n"
+                f"Sharpe Ratio: {m['sharpe_ratio']}\n"
+                f"Max Drawdown: {m['max_drawdown_pct']}%\n"
+                f"Total Trades: {m['total_closed_trades']}"
+            )
+            TelegramNotifier.send_message(summary)
+            self.eod_sent = True
+        except Exception as e:
+            logger.error(f"EOD_SUMMARY_ERROR: {e}")
+
     def auto_square_off_check(self, now: datetime) -> bool:
         if now.hour >= Config.AUTO_SQUARE_OFF_HOUR and now.minute >= Config.AUTO_SQUARE_OFF_MINUTE:
             logger.warning("AUTO_SQUARE_OFF_TIME_REACHED")
             for symbol, pos in list(self.positions.items()):
                 token = self.token_map[symbol]
-                price = pos["max_seen_price"] # Approximation for log, actual fill via MARKET
+                price = pos["max_seen_price"]
                 resp = self.order_engine.place_order(symbol, token, "SELL", pos["qty"], 0.0)
                 if resp and resp.get("status"):
                     pnl = (price - pos["entry"]) * pos["qty"]
                     self.risk.record_trade(symbol, pnl=pnl, is_open=False)
                     self.logger.log_trade({"timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), "symbol": symbol, "action": "SELL", "price": price, "qty": pos["qty"], "net_pnl": round(pnl, 2), "notes": "AUTO_SQUARE_OFF"})
-                    TelegramNotifier.send_message(f"SYSTEM_AUTO_SQUARE_OFF\nSYMBOL: {symbol}\nQTY: {pos['qty']}")
             self.positions.clear()
+            self.send_eod_summary()
             self.running = False
             return True
         return False
@@ -81,7 +131,14 @@ class LiveTradingBot:
         
         if not self.token_map: return False
         self.fetcher = HistoricalDataFetcher(smart_api)
-        TelegramNotifier.send_message(f"SYSTEM_START\nMODE: {'DRY_RUN' if Config.DRY_RUN else 'LIVE'}\nSYMBOLS: {len(self.token_map)}")
+        
+        TelegramNotifier.send_message(
+            f"QUANT_SYSTEM_READY\n"
+            f"Mode: {'DRY_RUN' if Config.DRY_RUN else 'LIVE'}\n"
+            f"Symbols Scanned: {len(self.token_map)}\n"
+            f"Regime Guard: {Config.MARKET_REGIME_FILTER}\n"
+            f"Capital: Rs{Config.DEFAULT_CAPITAL:,.2f}"
+        )
         return True
 
     def run(self):
@@ -96,6 +153,7 @@ class LiveTradingBot:
                 continue
 
             if self.auto_square_off_check(now): break
+            regime_ok = self.check_market_regime()
 
             for symbol, token in self.token_map.items():
                 if not self.risk.can_trade(): break
@@ -109,18 +167,19 @@ class LiveTradingBot:
                     sig = int(latest['signal'])
                     price = float(latest['close'])
                     rsi = float(latest['rsi']) if latest['rsi'] == latest['rsi'] else 0.0
-                    atr = float(latest['atr_pct']) if 'atr_pct' in latest else 0.0
+                    atr = float(latest['atr']) if 'atr' in latest else 1.0
+                    atr_pct = float(latest['atr_pct']) if 'atr_pct' in latest else 0.0
                     timestamp = latest['timestamp']
 
                     if symbol in self.last_signal_time and self.last_signal_time[symbol] == timestamp:
                         continue
 
-                    reason = f"STRATEGY_TRIGGER_RSI_{rsi:.1f}_ATR_{atr:.2f}"
+                    reason = f"CONFLUENCE_TRIGGER_RSI_{rsi:.1f}_ATR_{atr_pct:.2f}%"
 
+                    # Trailing & Hard SL/TP Check
                     if symbol in self.positions:
                         pos = self.positions[symbol]
                         entry = pos["entry"]
-                        # Update trailing max price
                         if price > pos["max_seen_price"]:
                             pos["max_seen_price"] = price
 
@@ -134,13 +193,14 @@ class LiveTradingBot:
                         elif price >= hard_tp:
                             sig = -1
                             reason = f"TAKE_PROFIT_{price}_GTE_{hard_tp:.2f}"
-                        elif price <= trailing_sl and pos["max_seen_price"] > entry * 1.005: # Only activate TSL if in profit
+                        elif price <= trailing_sl and pos["max_seen_price"] > entry * 1.005:
                             sig = -1
                             reason = f"TRAILING_STOP_LOSS_{price}_LTE_{trailing_sl:.2f}"
 
-                    if sig == 1 and symbol not in self.positions:
+                    # Execution Logic
+                    if sig == 1 and symbol not in self.positions and regime_ok:
                         if self.risk.can_open_position(symbol):
-                            qty = self.risk.get_safe_qty(price, Config.DEFAULT_CAPITAL)
+                            qty = self.risk.get_volatility_adjusted_qty(price, atr, Config.DEFAULT_CAPITAL)
                             if qty > 0:
                                 resp = self.order_engine.place_order(symbol, token, "BUY", qty, price)
                                 if resp and resp.get("status"):

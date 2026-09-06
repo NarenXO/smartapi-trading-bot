@@ -15,6 +15,7 @@ from src.auth import SmartAPIAuth
 from src.instruments import InstrumentManager
 from src.historical import HistoricalDataFetcher
 from src.strategy import Strategy
+from src.metrics import PerformanceMetrics
 
 st.set_page_config(page_title="ANGEL_ONE_QUANT_TERMINAL", layout="wide", initial_sidebar_state="expanded")
 
@@ -82,12 +83,15 @@ log_files = sorted(glob.glob("logs/paper_trades_*.csv"), reverse=True)
 df_trades = pd.read_csv(log_files[0]) if log_files else pd.DataFrame()
 
 net_pnl = df_trades['net_pnl'].replace('', 0).astype(float).sum() if not df_trades.empty and 'net_pnl' in df_trades else 0.0
+m = PerformanceMetrics.calculate_metrics(df_trades, Config.DEFAULT_CAPITAL)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.metric("AUM", f"{Config.DEFAULT_CAPITAL + net_pnl:.2f}")
 c2.metric("REALIZED_PNL", f"{net_pnl:.2f}")
-c3.metric("TRADE_COUNT", len(df_trades[df_trades['action'] == 'SELL']) if not df_trades.empty else 0)
-c4.metric("SYSTEM_LATENCY", "42ms")
+c3.metric("WIN_RATE", f"{m['win_rate_pct']}%")
+c4.metric("PROFIT_FACTOR", f"{m['profit_factor']}")
+c5.metric("SHARPE_RATIO", f"{m['sharpe_ratio']}")
+c6.metric("MAX_DRAWDOWN", f"{m['max_drawdown_pct']}%")
 
 tab1, tab2, tab3 = st.tabs(["[MARKET_DATA]", "[EXECUTION_LEDGER]", "[SYSTEM_LOGS]"])
 

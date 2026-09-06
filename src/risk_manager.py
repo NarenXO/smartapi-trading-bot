@@ -63,11 +63,24 @@ class RiskManager:
             return False
         return True
 
-    def get_safe_qty(self, price: float, available_capital: float) -> int:
-        if price <= 0: return 0
-        max_by_capital = int(available_capital * 0.25 // price)
-        qty = min(Config.MAX_QTY_PER_TRADE, max_by_capital)
-        return max(qty, 0)
+    def get_volatility_adjusted_qty(self, price: float, atr: float, total_capital: float) -> int:
+        """
+        Calculates position size where max loss if stopped out (2 * ATR) equals exactly
+        Config.RISK_PER_TRADE_FRACTION (1%) of account equity.
+        """
+        if price <= 0 or atr <= 0:
+            return 1 if Config.MAX_QTY_PER_TRADE == 1 else 0
+
+        risk_amount = total_capital * Config.RISK_PER_TRADE_FRACTION
+        risk_per_share = 2.0 * atr  # Stop loss distance = 2x ATR
+
+        qty_by_volatility = int(risk_amount // risk_per_share) if risk_per_share > 0 else 1
+        max_capital_qty = int((total_capital * 0.25) // price)
+
+        target_qty = min(qty_by_volatility, max_capital_qty)
+        final_qty = min(target_qty, Config.MAX_QTY_PER_TRADE) if Config.MAX_QTY_PER_TRADE > 0 else target_qty
+        
+        return max(final_qty, 1)
 
     def record_trade(self, symbol: str, pnl: float = 0.0, is_open: bool = True):
         self.trades_today += 1
