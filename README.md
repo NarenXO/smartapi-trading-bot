@@ -59,6 +59,17 @@ Automated algorithmic trading system using Angel One SmartAPI with technical mom
    - KILL_SWITCH: Create a file named KILL_SWITCH in project root to halt immediately
    - Daily loss cap: Auto-stops at 3% loss
 
+## Phase 12: Zero-Cost Institutional Intelligence
+
+The bot now includes institutional-grade data layers using free NSE APIs:
+
+- **FII/DII Flow Filter**: Blocks new LONG positions when combined institutional net flow is negative (configurable threshold). Fetches from NSE public API. Fails open if data unavailable.
+- **Option Chain OI Walls**: Detects Nifty option chain support/resistance levels (max Put/Call OI). Blocks longs if spot is pinned near call-wall resistance. Fails open if data unavailable.
+- **Sector Rotation**: Only allows LONGs in stocks whose sector is among top-ranked sectoral indices by 5-day ROC. Maps Nifty 50 symbols to sector buckets (BANK, IT, AUTO, PHARMA, FMCG, METAL, ENERGY, etc.). Fails open if indices unresolved.
+- **Corporate Actions Pause**: Skips symbols with known event dates from `data/corporate_actions.csv`. Pauses from T-1 through T+0. User-editable CSV format: `symbol,event_date,event_type,notes`.
+
+All filters are configurable via environment variables and can be toggled independently. The system uses fail-open behavior when NSE data is blocked (logs warning, does not crash bot).
+
 ## 🌐 Easy Web Interface (No Terminal Required)
 
 Double click `Start_App.bat` or run:

@@ -77,6 +77,24 @@ with st.sidebar:
     st.text(f"HARD_SL: {Config.STOP_LOSS_PCT}%")
     st.text(f"TRAILING_SL: {Config.TRAILING_SL_PCT}%")
     st.text(f"AUTO_SQUARE_OFF: {Config.AUTO_SQUARE_OFF_HOUR}:{Config.AUTO_SQUARE_OFF_MINUTE}")
+    st.text(f"FII_DII_FILTER: {Config.FII_DII_FILTER}")
+    st.text(f"OPTION_OI_FILTER: {Config.OPTION_OI_FILTER}")
+    st.text(f"SECTOR_ROTATION: {Config.SECTOR_ROTATION_FILTER}")
+    st.text(f"CORP_ACTIONS: {Config.CORPORATE_ACTIONS_FILTER}")
+    st.text(f"TOP_K_STOCKS: {Config.TOP_K_STOCKS}")
+
+    if st.button("REFRESH_MACRO_SNAPSHOT", use_container_width=True):
+        try:
+            from src.fii_dii import FIIDIIClient
+            from src.option_oi import OptionOIAnalyzer
+            fii = FIIDIIClient.fetch_latest()
+            oi = OptionOIAnalyzer.fetch_nifty_walls()
+            st.text(f"FII_NET: {fii.get('fii_net')}")
+            st.text(f"DII_NET: {fii.get('dii_net')}")
+            st.text(f"COMBINED: {fii.get('combined_net')}")
+            st.text(f"OI_SUP: {oi.get('support')} OI_RES: {oi.get('resistance')} SPOT: {oi.get('spot')}")
+        except Exception as e:
+            st.text(f"MACRO_SNAPSHOT_ERROR: {e}")
 
 log_files = sorted(glob.glob("logs/paper_trades_*.csv"), reverse=True)
 df_trades = pd.read_csv(log_files[0]) if log_files else pd.DataFrame()

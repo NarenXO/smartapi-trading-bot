@@ -48,6 +48,14 @@ class Config:
     MAX_SPREAD_PCT = float(os.getenv("MAX_SPREAD_PCT", "0.20")) # 0.20% max allowed spread
     RISK_PER_TRADE_FRACTION = float(os.getenv("RISK_PER_TRADE_FRACTION", "0.01")) # 1% account risk per trade
     NIFTY_TOKEN = "99926000" # NSE Nifty 50 Token
+
+    # Phase 12: Zero-Cost Institutional Intelligence
+    FII_DII_FILTER = os.getenv("FII_DII_FILTER", "True").lower() in ("true", "1", "yes")
+    SECTOR_ROTATION_FILTER = os.getenv("SECTOR_ROTATION_FILTER", "True").lower() in ("true", "1", "yes")
+    OPTION_OI_FILTER = os.getenv("OPTION_OI_FILTER", "True").lower() in ("true", "1", "yes")
+    CORPORATE_ACTIONS_FILTER = os.getenv("CORPORATE_ACTIONS_FILTER", "True").lower() in ("true", "1", "yes")
+    TOP_SECTORS_COUNT = int(os.getenv("TOP_SECTORS_COUNT", "3"))
+    FII_DII_MIN_NET_CRORE = float(os.getenv("FII_DII_MIN_NET_CRORE", "0"))
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)

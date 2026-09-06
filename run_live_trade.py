@@ -15,6 +15,9 @@ from src.trade_logger import TradeLogger
 from src.market_clock import MarketClock
 from src.telegram_bot import TelegramNotifier
 from src.metrics import PerformanceMetrics
+from src.institutional_gate import InstitutionalGate
+from src.sector_rotation import SectorRotationEngine
+from src.corporate_actions import CorporateActionsFilter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
@@ -33,6 +36,8 @@ class LiveTradingBot:
         self.positions = {}
         self.last_signal_time = {}
         self.eod_sent = False
+        self.institutional_gate = None
+        self._macro_cycle = 0
 
         signal.signal(signal.SIGINT, self._shutdown)
         signal.signal(signal.SIGTERM, self._shutdown)
@@ -136,13 +141,28 @@ class LiveTradingBot:
         from src.ranking import RankingEngine
         ranker = RankingEngine(self.fetcher)
         self.token_map = ranker.rank_symbols(self.token_map)
-        
+
+        # Initialize institutional gate
+        inst_mgr = InstrumentManager()
+        sector_engine = SectorRotationEngine(self.fetcher, inst_mgr)
+        try:
+            sector_engine.refresh()
+        except Exception as e:
+            logger.warning(f"SECTOR_REFRESH_FAIL: {e}")
+        corp_filter = CorporateActionsFilter()
+        self.institutional_gate = InstitutionalGate(sector_engine=sector_engine, corp_filter=corp_filter)
+        self.institutional_gate.refresh_macro()
+
         TelegramNotifier.send_message(
             f"QUANT_SYSTEM_READY\n"
-            f"Mode: {'DRY_RUN' if Config.DRY_RUN else 'LIVE'}\n"
-            f"Symbols Scanned: {len(self.token_map)}\n"
-            f"Regime Guard: {Config.MARKET_REGIME_FILTER}\n"
-            f"Capital: Rs{Config.DEFAULT_CAPITAL:,.2f}"
+            f"MODE: {'DRY_RUN' if Config.DRY_RUN else 'LIVE'}\n"
+            f"SYMBOLS: {len(self.token_map)}\n"
+            f"REGIME_GUARD: {Config.MARKET_REGIME_FILTER}\n"
+            f"FII_DII: {Config.FII_DII_FILTER}\n"
+            f"OPTION_OI: {Config.OPTION_OI_FILTER}\n"
+            f"SECTOR_ROT: {Config.SECTOR_ROTATION_FILTER}\n"
+            f"CORP_ACTIONS: {Config.CORPORATE_ACTIONS_FILTER}\n"
+            f"CAPITAL: {Config.DEFAULT_CAPITAL}"
         )
         return True
 
@@ -159,6 +179,10 @@ class LiveTradingBot:
 
             if self.auto_square_off_check(now): break
             regime_ok = self.check_market_regime()
+
+            self._macro_cycle += 1
+            if self.institutional_gate and (self._macro_cycle == 1 or self._macro_cycle % 5 == 0):
+                self.institutional_gate.refresh_macro()
 
             for symbol, token in self.token_map.items():
                 if not self.risk.can_trade(): break
@@ -204,6 +228,12 @@ class LiveTradingBot:
 
                     # Execution Logic
                     if sig == 1 and symbol not in self.positions and regime_ok:
+                        gate = self.institutional_gate.allows_long(symbol) if self.institutional_gate else {"allowed": True, "reason": "NO_GATE"}
+                        if not gate.get("allowed", True):
+                            logger.info(f"LONG_BLOCKED_{symbol}: {gate.get('reason')}")
+                            continue
+                        reason = f"{reason}|{gate.get('reason', '')}"
+
                         if self.risk.can_open_position(symbol):
                             qty = self.risk.get_volatility_adjusted_qty(price, atr, Config.DEFAULT_CAPITAL)
                             if qty > 0:
