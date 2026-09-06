@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from datetime import datetime
-import tailer
 
 from src.config import Config
 from src.market_clock import MarketClock
@@ -116,5 +115,14 @@ with tab2:
         st.text("NO_EXECUTION_DATA_FOUND")
 
 with tab3:
-    st.text("TAILING_SYSTEM_STDOUT...")
-    st.code("System logs will route here in cloud deployment.", language='bash')
+    st.text("SYSTEM_STDOUT")
+    log_candidates = sorted(glob.glob("logs/*.csv"), reverse=True)
+    if log_candidates:
+        try:
+            with open(log_candidates[0], "r", encoding="utf-8") as f:
+                lines = f.readlines()[-50:]
+            st.code("".join(lines) if lines else "NO_LOG_LINES", language="text")
+        except Exception as e:
+            st.text(f"LOG_READ_ERROR: {e}")
+    else:
+        st.text("NO_LOG_FILES_FOUND")
