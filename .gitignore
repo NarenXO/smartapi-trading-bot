@@ -26,3 +26,5 @@ wheels/
 logs/
 data/*.json
 trades_*.csv
+logs/*.csv
+!logs/.gitkeep

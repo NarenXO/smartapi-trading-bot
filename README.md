@@ -36,3 +36,9 @@ Automated algorithmic trading system using Angel One SmartAPI with technical mom
    python run_live_backtest.py TCS
    python run_live_backtest.py HDFCBANK
    ```
+
+5. **Run Paper Trading (Live Market Hours):**
+   ```bash
+   python run_paper_trade.py
+   ```
+   The bot will authenticate, poll live 1-minute candles during 9:15–15:30 IST, and simulate trades. All paper trades are logged to logs/paper_trades_YYYYMMDD.csv.
