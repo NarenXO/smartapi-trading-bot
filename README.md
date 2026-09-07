@@ -70,6 +70,40 @@ The bot now includes institutional-grade data layers using free NSE APIs:
 
 All filters are configurable via environment variables and can be toggled independently. The system uses fail-open behavior when NSE data is blocked (logs warning, does not crash bot).
 
+## Phase 14: Strategy Validation
+
+The bot now includes a baseline strategy mode and real data validation tools:
+
+- **Default STRATEGY_MODE=BASELINE**: EMA 9/21 cross + volume confirmation (2-factor, validated path). No multi-factor confluence by default.
+- **CONFLUENCE Mode**: Optional experimental multi-factor mode (RSI, VWAP, POC, predictive slope sign) - OFF by default, requires explicit opt-in via .env.
+- **Optional Gates OFF by Default**: FII/DII, sector rotation, option OI, corporate actions, ranking - all disabled for clean A/B testing. Enable one at a time and re-validate.
+- **Real Data Validation**: Use `run_live_backtest.py` for validation on actual SmartAPI historical data with full cost model. No silent mock fallback.
+- **Walk-Forward Testing**: Use `walk_forward.py` to test on untouched out-of-sample data and detect overfitting.
+- **Honest Predictive Stats**: Removed fake "probability" from linear regression - now returns slope, r-squared, p-value only (diagnostics, not trade probability).
+
+### Validation Commands
+
+```bash
+# Real data validation (requires SmartAPI credentials)
+python run_live_backtest.py RELIANCE
+
+# Walk-forward validation (train vs test on untouched data)
+python walk_forward.py RELIANCE
+
+# One-click baseline validation for all symbols
+python validate_baseline.py
+
+# Synthetic smoke test only (NOT strategy validation)
+python run_backtest.py
+```
+
+### Important Notes
+
+- **Complexity does not equal edge**. The baseline 2-factor strategy is the validated path.
+- Optional factors must be enabled one at a time and re-validated before use.
+- The system uses fail-open behavior for external data (logs warning, does not crash).
+- No paid data vendors are used - all institutional data comes from free NSE APIs.
+
 ## 🌐 Easy Web Interface (No Terminal Required)
 
 Double click `Start_App.bat` or run:

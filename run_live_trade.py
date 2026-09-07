@@ -18,6 +18,7 @@ from src.metrics import PerformanceMetrics
 from src.institutional_gate import InstitutionalGate
 from src.sector_rotation import SectorRotationEngine
 from src.corporate_actions import CorporateActionsFilter
+from src.scan_status import ScanStatus
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
@@ -132,15 +133,27 @@ class LiveTradingBot:
 
         self.order_engine = OrderEngine(smart_api=smart_api, dry_run=Config.DRY_RUN)
         from src.universe import UniverseScanner
-        self.token_map = UniverseScanner().get_target_tokens()
+        
+        # Initialize symbol universe based on USE_RANKING setting
+        if Config.USE_RANKING:
+            self.token_map = UniverseScanner().get_target_tokens()
+            if not self.token_map: return False
+            self.fetcher = HistoricalDataFetcher(smart_api)
+            from src.ranking import RankingEngine
+            ranker = RankingEngine(self.fetcher)
+            self.token_map = ranker.rank_symbols(self.token_map)
+        else:
+            # Use static TARGET_SYMBOLS (default for BASELINE mode)
+            inst_mgr = InstrumentManager()
+            self.token_map = {}
+            for sym in Config.TARGET_SYMBOLS:
+                token = inst_mgr.get_token(sym, "NSE")
+                if token:
+                    self.token_map[sym] = token
         
         if not self.token_map: return False
-        self.fetcher = HistoricalDataFetcher(smart_api)
-        
-        # Rank universe and filter down to TOP_K_STOCKS
-        from src.ranking import RankingEngine
-        ranker = RankingEngine(self.fetcher)
-        self.token_map = ranker.rank_symbols(self.token_map)
+        if not self.fetcher:
+            self.fetcher = HistoricalDataFetcher(smart_api)
 
         # Initialize institutional gate
         inst_mgr = InstrumentManager()
@@ -156,6 +169,7 @@ class LiveTradingBot:
         TelegramNotifier.send_message(
             f"QUANT_SYSTEM_READY\n"
             f"MODE: {'DRY_RUN' if Config.DRY_RUN else 'LIVE'}\n"
+            f"STRATEGY: {Config.STRATEGY_MODE}\n"
             f"SYMBOLS: {len(self.token_map)}\n"
             f"REGIME_GUARD: {Config.MARKET_REGIME_FILTER}\n"
             f"FII_DII: {Config.FII_DII_FILTER}\n"
@@ -184,6 +198,9 @@ class LiveTradingBot:
             if self.institutional_gate and (self._macro_cycle == 1 or self._macro_cycle % 5 == 0):
                 self.institutional_gate.refresh_macro()
 
+            # Collect diagnostics for ScanStatus
+            scan_diagnostics = []
+
             for symbol, token in self.token_map.items():
                 if not self.risk.can_trade(): break
 
@@ -199,11 +216,14 @@ class LiveTradingBot:
                     atr = float(latest['atr']) if 'atr' in latest else 1.0
                     atr_pct = float(latest['atr_pct']) if 'atr_pct' in latest else 0.0
                     timestamp = latest['timestamp']
+                    signal_reason = latest.get('signal_reason', 'UNKNOWN')
+                    confluence_score = float(latest.get('confluence_score', 0) or 0)
 
                     if symbol in self.last_signal_time and self.last_signal_time[symbol] == timestamp:
                         continue
 
-                    reason = f"CONFLUENCE_TRIGGER_RSI_{rsi:.1f}_ATR_{atr_pct:.2f}%"
+                    reason = signal_reason
+                    gate_reason = ""
 
                     # Trailing & Hard SL/TP Check
                     if symbol in self.positions:
@@ -231,8 +251,18 @@ class LiveTradingBot:
                         gate = self.institutional_gate.allows_long(symbol) if self.institutional_gate else {"allowed": True, "reason": "NO_GATE"}
                         if not gate.get("allowed", True):
                             logger.info(f"LONG_BLOCKED_{symbol}: {gate.get('reason')}")
+                            gate_reason = gate.get('reason', '')
+                            scan_diagnostics.append({
+                                "symbol": symbol,
+                                "price": price,
+                                "signal": sig,
+                                "reason": signal_reason,
+                                "score": confluence_score,
+                                "blocked_by": gate_reason
+                            })
                             continue
-                        reason = f"{reason}|{gate.get('reason', '')}"
+                        gate_reason = gate.get('reason', '')
+                        reason = f"{signal_reason}|{gate_reason}"
 
                         if self.risk.can_open_position(symbol):
                             qty = self.risk.get_volatility_adjusted_qty(price, atr, Config.DEFAULT_CAPITAL)
@@ -255,9 +285,25 @@ class LiveTradingBot:
                             del self.positions[symbol]
                             self.last_signal_time[symbol] = timestamp
                             TelegramNotifier.send_message(f"EXECUTE_SELL\nSYMBOL: {symbol}\nQTY: {pos['qty']}\nPRICE: {price}\nPNL: {pnl:.2f}\nREASON: {reason}")
+                    # Add to diagnostics regardless of signal
+                    scan_diagnostics.append({
+                        "symbol": symbol,
+                        "price": price,
+                        "signal": sig,
+                        "reason": signal_reason,
+                        "score": confluence_score,
+                        "blocked_by": gate_reason if gate_reason else ""
+                    })
                             
                 except Exception as e:
                     logger.error(f"PROCESS_ERROR_{symbol}: {e}")
+
+            # Write scan status for UI diagnostics
+            ScanStatus.write({
+                "mode": Config.STRATEGY_MODE,
+                "symbols": scan_diagnostics,
+                "open_positions": list(self.positions.keys())
+            })
 
             time.sleep(self.poll_interval)
 

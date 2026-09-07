@@ -26,7 +26,12 @@ def generate_mock_ohlcv(days: int = 180) -> pd.DataFrame:
 
 def main():
     print("\n========================================================")
-    print("      ANGEL ONE SMARTAPI STRATEGY BACKTESTER (TEST RUN)")
+    print("      SYNTHETIC DATA SMOKE TEST ONLY")
+    print("========================================================")
+    print("\nWARNING: This backtest uses SYNTHETIC data.")
+    print("This does NOT validate strategy edge.")
+    print("Use: python run_live_backtest.py SYMBOL")
+    print("And: python walk_forward.py SYMBOL")
     print("========================================================\n")
     
     df = generate_mock_ohlcv(days=200)
@@ -48,7 +53,7 @@ def main():
     ]
     
     print(tabulate(table_data, headers=["Metric", "Value"], tablefmt="grid"))
-    print("\n[SUCCESS] Backtest engine validated successfully.\n")
+    print("\n[SUCCESS] Backtest engine validated successfully (SYNTHETIC DATA ONLY).\n")
 
 if __name__ == "__main__":
     main()

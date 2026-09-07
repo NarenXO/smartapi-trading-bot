@@ -199,7 +199,7 @@ m6.metric("Max Drawdown", f"{m['max_drawdown_pct']}%")
 st.divider()
 
 # Main Interface Tabs
-tab_charts, tab_ledger, tab_logs = st.tabs(["📊 Interactive Stock Charts", "📜 Executed Trades Journal", "🖥️ System Activity Logs"])
+tab_charts, tab_ledger, tab_logs, tab_scan = st.tabs(["📊 Interactive Stock Charts", "📜 Executed Trades Journal", "🖥️ System Activity Logs", "🔍 Scanner Status"])
 
 with tab_charts:
     st.subheader("Technical Analysis & Algorithm Signals")
@@ -302,3 +302,23 @@ with tab_logs:
             st.error(f"Error reading log file: {e}")
     else:
         st.info("No system log files found for today.")
+
+with tab_scan:
+    st.subheader("Scanner Status (Why No Trade)")
+    from src.scan_status import ScanStatus
+    scan_data = ScanStatus.read()
+    
+    st.caption(f"Strategy Mode: **{scan_data.get('mode', 'UNKNOWN')}**")
+    st.caption(f"Last Updated: **{scan_data.get('updated_at', 'NEVER')}**")
+    st.caption(f"Open Positions: **{', '.join(scan_data.get('open_positions', [])) or 'None'}**")
+    
+    st.info("No trade does not mean the bot is stuck. It means filters did not pass.")
+    
+    symbols = scan_data.get('symbols', [])
+    if symbols:
+        st.subheader("Last Scanned Symbols")
+        df_scan = pd.DataFrame(symbols)
+        st.dataframe(df_scan, use_container_width=True, hide_index=True)
+    else:
+        st.info("No scan data available yet. Bot may not be running.")
+

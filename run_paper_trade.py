@@ -10,6 +10,7 @@ from src.historical import HistoricalDataFetcher
 from src.strategy import Strategy
 from src.paper_trader import PaperTrader
 from src.market_clock import MarketClock
+from src.scan_status import ScanStatus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -86,6 +87,8 @@ class PaperTradingBot:
 
             logger.info(f"--- Cycle {cycle} | {MarketClock.now_ist().strftime('%H:%M:%S')} IST ---")
 
+            scan_diagnostics = []
+
             for symbol, token in self.token_map.items():
                 try:
                     now = MarketClock.now_ist()
@@ -105,6 +108,8 @@ class PaperTradingBot:
                         current_signal = int(latest['signal'])
                         current_price = float(latest['close'])
                         rsi_val = float(latest['rsi']) if not pd.isna(latest['rsi']) else 0.0
+                        signal_reason = latest.get('signal_reason', 'UNKNOWN')
+                        confluence_score = float(latest.get('confluence_score', 0) or 0)
 
                         if current_signal != 0:
                             action = "BUY" if current_signal == 1 else "SELL"
@@ -112,11 +117,28 @@ class PaperTradingBot:
                             self.trader.execute_signal(symbol, current_signal, current_price)
                         else:
                             logger.info(f"HOLD {symbol} @ Rs{current_price} (RSI: {rsi_val:.1f})")
+
+                        # Add to diagnostics
+                        scan_diagnostics.append({
+                            "symbol": symbol,
+                            "price": current_price,
+                            "signal": current_signal,
+                            "reason": signal_reason,
+                            "score": confluence_score,
+                            "blocked_by": ""
+                        })
                     else:
                         logger.warning(f"Insufficient data for {symbol} ({len(df) if df is not None else 0} candles)")
 
                 except Exception as e:
                     logger.error(f"Error processing {symbol}: {str(e)}")
+
+            # Write scan status for UI diagnostics
+            ScanStatus.write({
+                "mode": Config.STRATEGY_MODE,
+                "symbols": scan_diagnostics,
+                "open_positions": list(self.trader.positions.keys())
+            })
 
             logger.info(f"STATUS: {self.trader.get_status()}\n")
             time.sleep(self.poll_interval)

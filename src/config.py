@@ -38,24 +38,42 @@ class Config:
     AUTO_SQUARE_OFF_MINUTE = int(os.getenv("AUTO_SQUARE_OFF_MINUTE", "15"))
 
     # Phase 9: Dynamic Universe & Predictive Confluence
-    UNIVERSE_MODE = os.getenv("UNIVERSE_MODE", "NIFTY50") # NIFTY50 or STATIC
+    UNIVERSE_MODE = os.getenv("UNIVERSE_MODE", "STATIC") # NIFTY50 or STATIC
     CONFLUENCE_THRESHOLD = float(os.getenv("CONFLUENCE_THRESHOLD", "0.80")) # 80% score required
-    MAX_SCAN_SYMBOLS = int(os.getenv("MAX_SCAN_SYMBOLS", "50")) # Scan all for ranking
+    MAX_SCAN_SYMBOLS = int(os.getenv("MAX_SCAN_SYMBOLS", "10")) # Scan all for ranking
     TOP_K_STOCKS = int(os.getenv("TOP_K_STOCKS", "5")) # Only actively trade top 5
 
     # Phase 10: Enterprise Quant Settings
-    MARKET_REGIME_FILTER = os.getenv("MARKET_REGIME_FILTER", "True").lower() in ("true", "1", "yes")
+    MARKET_REGIME_FILTER = os.getenv("MARKET_REGIME_FILTER", "False").lower() in ("true", "1", "yes")
     MAX_SPREAD_PCT = float(os.getenv("MAX_SPREAD_PCT", "0.20")) # 0.20% max allowed spread
     RISK_PER_TRADE_FRACTION = float(os.getenv("RISK_PER_TRADE_FRACTION", "0.01")) # 1% account risk per trade
     NIFTY_TOKEN = "99926000" # NSE Nifty 50 Token
 
-    # Phase 12: Zero-Cost Institutional Intelligence
-    FII_DII_FILTER = os.getenv("FII_DII_FILTER", "True").lower() in ("true", "1", "yes")
-    SECTOR_ROTATION_FILTER = os.getenv("SECTOR_ROTATION_FILTER", "True").lower() in ("true", "1", "yes")
-    OPTION_OI_FILTER = os.getenv("OPTION_OI_FILTER", "True").lower() in ("true", "1", "yes")
-    CORPORATE_ACTIONS_FILTER = os.getenv("CORPORATE_ACTIONS_FILTER", "True").lower() in ("true", "1", "yes")
+    # Phase 12: Zero-Cost Institutional Intelligence (OFF by default for clean A/B tests)
+    FII_DII_FILTER = os.getenv("FII_DII_FILTER", "False").lower() in ("true", "1", "yes")
+    SECTOR_ROTATION_FILTER = os.getenv("SECTOR_ROTATION_FILTER", "False").lower() in ("true", "1", "yes")
+    OPTION_OI_FILTER = os.getenv("OPTION_OI_FILTER", "False").lower() in ("true", "1", "yes")
+    CORPORATE_ACTIONS_FILTER = os.getenv("CORPORATE_ACTIONS_FILTER", "False").lower() in ("true", "1", "yes")
     TOP_SECTORS_COUNT = int(os.getenv("TOP_SECTORS_COUNT", "3"))
     FII_DII_MIN_NET_CRORE = float(os.getenv("FII_DII_MIN_NET_CRORE", "0"))
+
+    # Phase 14: Strategy Mode & Validation
+    STRATEGY_MODE = os.getenv("STRATEGY_MODE", "BASELINE").upper()
+    EMA_FAST = int(os.getenv("EMA_FAST", "9"))
+    EMA_SLOW = int(os.getenv("EMA_SLOW", "21"))
+    RSI_PERIOD = int(os.getenv("RSI_PERIOD", "14"))
+    VOLUME_SMA_PERIOD = int(os.getenv("VOLUME_SMA_PERIOD", "20"))
+    VOLUME_MULT = float(os.getenv("VOLUME_MULT", "1.5"))
+    USE_PREDICTIVE_FACTOR = os.getenv("USE_PREDICTIVE_FACTOR", "False").lower() in ("true", "1", "yes")
+    USE_POC_FACTOR = os.getenv("USE_POC_FACTOR", "False").lower() in ("true", "1", "yes")
+    USE_VWAP_FACTOR = os.getenv("USE_VWAP_FACTOR", "False").lower() in ("true", "1", "yes")
+    USE_RSI_FACTOR = os.getenv("USE_RSI_FACTOR", "False").lower() in ("true", "1", "yes")
+    USE_RANKING = os.getenv("USE_RANKING", "False").lower() in ("true", "1", "yes")
+    GATE_FAIL_MODE = os.getenv("GATE_FAIL_MODE", "fail_open").lower()
+    BACKTEST_FROM = os.getenv("BACKTEST_FROM", "2024-01-01 09:15")
+    BACKTEST_TO = os.getenv("BACKTEST_TO", "2024-12-31 15:30")
+    WALK_FORWARD_TRAIN_DAYS = int(os.getenv("WALK_FORWARD_TRAIN_DAYS", "120"))
+    WALK_FORWARD_TEST_DAYS = int(os.getenv("WALK_FORWARD_TEST_DAYS", "60"))
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)

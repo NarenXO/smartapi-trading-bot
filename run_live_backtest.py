@@ -1,4 +1,6 @@
 import sys
+import json
+import os
 import pandas as pd
 from tabulate import tabulate
 from src.config import Config
@@ -7,58 +9,84 @@ from src.instruments import InstrumentManager
 from src.historical import HistoricalDataFetcher
 from src.strategy import Strategy
 from src.backtest import Backtester
-from run_backtest import generate_mock_ohlcv
+from src.metrics import PerformanceMetrics
 
-def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = "2024-01-01 09:15", to_date: str = "2024-06-01 15:30"):
+def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_date: str = None):
     print("\n========================================================")
-    print(f"      ANGEL ONE HISTORICAL BACKTEST: {symbol}")
+    print(f"      REAL DATA VALIDATION BACKTEST: {symbol}")
     print("========================================================\n")
 
-    df_data: pd.DataFrame = None
-    is_live_data = False
+    # Use config defaults if not provided
+    from_date = from_date or Config.BACKTEST_FROM
+    to_date = to_date or Config.BACKTEST_TO
 
-    # 1. Attempt Live SmartAPI Fetch if credentials configured
-    if Config.validate_creds():
-        print("[1/4] Authenticating with Angel One SmartAPI...")
-        auth = SmartAPIAuth()
-        smart_api = auth.login()
+    # 1. Require real SmartAPI credentials - no mock fallback for validation
+    if not Config.validate_creds():
+        print("[ERROR] REAL_DATA_REQUIRED: SmartAPI credentials not configured in .env")
+        print("Add ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN, ANGEL_TOTP_SECRET to .env")
+        sys.exit(1)
 
-        if smart_api:
-            print("[2/4] Resolving NSE Symbol Token...")
-            inst_mgr = InstrumentManager()
-            token = inst_mgr.get_token(symbol, exch_seg="NSE")
-            
-            if token:
-                print(f"       Found Token for {symbol}: {token}")
-                print("[3/4] Fetching Historical Candles...")
-                fetcher = HistoricalDataFetcher(smart_api)
-                df_data = fetcher.fetch_candles(
-                    symbol_token=token,
-                    interval="ONE_DAY",
-                    from_date=from_date,
-                    to_date=to_date
-                )
-                if df_data is not None and not df_data.empty:
-                    is_live_data = True
-                    print(f"       Successfully fetched {len(df_data)} historical candles.")
+    print("[1/5] Authenticating with Angel One SmartAPI...")
+    auth = SmartAPIAuth()
+    smart_api = auth.login()
 
-    # 2. Fallback to mock data if live data unavailable
+    if not smart_api:
+        print("[ERROR] REAL_DATA_REQUIRED: SmartAPI authentication failed")
+        sys.exit(1)
+
+    print("[2/5] Resolving NSE Symbol Token...")
+    inst_mgr = InstrumentManager()
+    token = inst_mgr.get_token(symbol, exch_seg="NSE")
+    
+    if not token:
+        print(f"[ERROR] Token not found for symbol: {symbol}")
+        sys.exit(1)
+
+    print(f"       Found Token for {symbol}: {token}")
+
+    print("[3/5] Fetching Historical Candles...")
+    fetcher = HistoricalDataFetcher(smart_api)
+    df_data = fetcher.fetch_candles(
+        symbol_token=token,
+        interval="ONE_DAY",
+        from_date=from_date,
+        to_date=to_date
+    )
+
     if df_data is None or df_data.empty:
-        print("[INFO] Live SmartAPI credentials not present or fetch skipped. Using offline market dataset.")
-        df_data = generate_mock_ohlcv(days=180)
-        is_live_data = False
+        print("[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data")
+        sys.exit(1)
 
-    # 3. Run Strategy and Backtest
-    print(f"[4/4] Executing Strategy & Cost Calculation (Data Source: {'LIVE SMARTAPI' if is_live_data else 'OFFLINE TEST DATA'})...\n")
-    strategy = Strategy(ema_fast=9, ema_slow=21, rsi_period=14)
+    print(f"       Successfully fetched {len(df_data)} historical candles.")
+
+    # 4. Run Strategy and Backtest
+    print(f"[4/5] Executing Strategy ({Config.STRATEGY_MODE}) & Cost Calculation...")
+    strategy = Strategy()
     df_signals = strategy.generate_signals(df_data)
 
     backtester = Backtester(initial_capital=Config.DEFAULT_CAPITAL, max_trade_pct=0.25)
     results = backtester.run(df_signals, symbol=symbol)
 
+    # 5. Calculate Performance Metrics
+    print("[5/5] Calculating Performance Metrics...")
+    trades_history = results.get('trades_history', [])
+    if trades_history:
+        df_trades = pd.DataFrame(trades_history)
+        metrics = PerformanceMetrics.calculate_metrics(df_trades, Config.DEFAULT_CAPITAL)
+    else:
+        metrics = {
+            'net_pnl': results['total_net_pnl'],
+            'win_rate_pct': results['win_rate_pct'],
+            'profit_factor': 0.0,
+            'sharpe_ratio': 0.0,
+            'max_drawdown_pct': 0.0
+        }
+
     table_data = [
+        ["Strategy Mode", Config.STRATEGY_MODE],
         ["Target Symbol", results['symbol']],
-        ["Data Source", "LIVE SMARTAPI" if is_live_data else "OFFLINE DATASET"],
+        ["Data Source", "REAL SMARTAPI"],
+        ["Date Range", f"{from_date} to {to_date}"],
         ["Candles Analyzed", len(df_data)],
         ["Initial Capital", f"INR {results['initial_capital']}"],
         ["Final Capital", f"INR {results['final_capital']}"],
@@ -67,12 +95,39 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = "2024-01-01
         ["ROI (%)", f"{results['roi_pct']}%"],
         ["Total Completed Trades", results['total_trades']],
         ["Winning Trades", results['winning_trades']],
-        ["Win Rate (%)", f"{results['win_rate_pct']}%"]
+        ["Win Rate (%)", f"{results['win_rate_pct']}%"],
+        ["Profit Factor", f"{metrics['profit_factor']}"],
+        ["Sharpe Ratio", f"{metrics['sharpe_ratio']}"],
+        ["Max Drawdown (%)", f"{metrics['max_drawdown_pct']}%"]
     ]
 
     print(tabulate(table_data, headers=["Metric", "Value"], tablefmt="grid"))
-    print("\n[SUCCESS] Backtest pipeline completed successfully.\n")
+    print("\n[SUCCESS] Real data validation backtest completed.\n")
+
+    # Save JSON report
+    os.makedirs("data", exist_ok=True)
+    report_path = f"data/backtest_report_{symbol}.json"
+    report = {
+        "strategy_mode": Config.STRATEGY_MODE,
+        "symbol": symbol,
+        "from_date": from_date,
+        "to_date": to_date,
+        "candles": len(df_data),
+        "trades": results['total_trades'],
+        "net_pnl": results['total_net_pnl'],
+        "charges": results['total_charges_paid'],
+        "win_rate_pct": results['win_rate_pct'],
+        "profit_factor": metrics['profit_factor'],
+        "sharpe_ratio": metrics['sharpe_ratio'],
+        "max_drawdown_pct": metrics['max_drawdown_pct'],
+        "final_capital": results['final_capital']
+    }
+    with open(report_path, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"Report saved to: {report_path}\n")
 
 if __name__ == "__main__":
     symbol = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
-    run_backtest_pipeline(symbol=symbol)
+    from_date = sys.argv[2] if len(sys.argv) > 2 else None
+    to_date = sys.argv[3] if len(sys.argv) > 3 else None
+    run_backtest_pipeline(symbol=symbol, from_date=from_date, to_date=to_date)
