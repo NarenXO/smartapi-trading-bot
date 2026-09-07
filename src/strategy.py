@@ -131,7 +131,8 @@ class Strategy:
 
         # Breakout: close crosses above orb_high after range is ready
         above = data["close"] > data["orb_high"]
-        crossed = above & (~above.shift(1).fillna(False)) & data["orb_ready"]
+        prev_above = above.shift(1).astype("boolean").fillna(False).astype(bool)
+        crossed = above & (~prev_above) & data["orb_ready"].astype(bool)
 
         data["signal"] = 0
         data["signal_reason"] = "HOLD"

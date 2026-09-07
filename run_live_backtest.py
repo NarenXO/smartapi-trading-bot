@@ -2,6 +2,7 @@ import sys
 import json
 import os
 import pandas as pd
+from datetime import datetime, timedelta
 from tabulate import tabulate
 from src.config import Config
 from src.auth import SmartAPIAuth
@@ -11,16 +12,57 @@ from src.strategy import Strategy
 from src.backtest import Backtester
 from src.metrics import PerformanceMetrics
 
+VALID_INTERVALS = {
+    "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE", "TEN_MINUTE", 
+    "FIFTEEN_MINUTE", "THIRTY_MINUTE", "ONE_HOUR", "ONE_DAY"
+}
+
+def resolve_date_range(interval: str):
+    """Resolve from_date and to_date based on interval type."""
+    now = datetime.now()
+    today = now.date()
+    
+    if interval == "ONE_DAY":
+        # Use config defaults for daily
+        from_date = Config.BACKTEST_FROM
+        to_date = Config.BACKTEST_TO
+        # Validate from_date looks like a date
+        if from_date and "-" in from_date and any(c.isdigit() for c in from_date):
+            pass  # Use config
+        else:
+            from_date = "2024-01-01 09:15"
+        # Cap to_date to today
+        if to_date and "-" in to_date:
+            try:
+                to_dt = datetime.strptime(to_date.split()[0], "%Y-%m-%d")
+                if to_dt.date() > today:
+                    to_date = f"{today} 15:30"
+            except:
+                to_date = f"{today} 15:30"
+        else:
+            to_date = f"{today} 15:30"
+    else:
+        # Intraday: default to last 60 calendar days
+        from_dt = now - timedelta(days=60)
+        from_date = from_dt.strftime("%Y-%m-%d 09:15")
+        to_date = now.strftime("%Y-%m-%d 15:30")
+    
+    return from_date, to_date
+
 def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_date: str = None, interval: str = None):
     print("\n========================================================")
     print(f"      REAL DATA VALIDATION BACKTEST: {symbol}")
     print("========================================================\n")
 
-    # Use config defaults if not provided
-    from_date = from_date or Config.BACKTEST_FROM
-    to_date = to_date or Config.BACKTEST_TO
+    # Parse CLI: argv[2] could be interval or from_date
     # Phase 15: Prefer FIFTEEN_MINUTE for ORB realism
     interval = interval or "FIFTEEN_MINUTE"
+    
+    # Resolve dates based on interval if not explicitly provided
+    if not from_date or not to_date:
+        resolved_from, resolved_to = resolve_date_range(interval)
+        from_date = from_date or resolved_from
+        to_date = to_date or resolved_to
 
     # 1. Require real SmartAPI credentials - no mock fallback for validation
     if not Config.validate_creds():
@@ -62,16 +104,22 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_da
     # Fall back to ONE_DAY if FIFTEEN_MINUTE fails or returns too few bars
     if df_data is None or df_data.empty or len(df_data) < 30:
         print(f"       {interval} fetch failed or insufficient bars. Falling back to ONE_DAY (ORB_MODE=DAILY_PROXY).")
+        # Resolve daily dates for fallback
+        daily_from, daily_to = resolve_date_range("ONE_DAY")
         df_data = fetcher.fetch_candles(
             symbol_token=token,
             interval="ONE_DAY",
-            from_date=from_date,
-            to_date=to_date
+            from_date=daily_from,
+            to_date=daily_to
         )
         orb_mode = "DAILY_PROXY"
+        from_date = daily_from
+        to_date = daily_to
     
     if df_data is None or df_data.empty:
-        print("[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data")
+        print(f"[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data for {symbol}")
+        print(f"       Interval: {interval}, From: {from_date}, To: {to_date}")
+        print(f"       SmartAPI returned empty response. Check API limits or date range.")
         sys.exit(1)
 
     print(f"       Successfully fetched {len(df_data)} historical candles (ORB_MODE: {orb_mode}).")
@@ -147,7 +195,31 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_da
 
 if __name__ == "__main__":
     symbol = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
-    from_date = sys.argv[2] if len(sys.argv) > 2 else None
-    to_date = sys.argv[3] if len(sys.argv) > 3 else None
-    interval = sys.argv[4] if len(sys.argv) > 4 else None
+    
+    # Parse CLI: argv[2] could be interval or from_date
+    interval = None
+    from_date = None
+    to_date = None
+    
+    if len(sys.argv) > 2:
+        arg2 = sys.argv[2].upper()
+        if arg2 in VALID_INTERVALS:
+            interval = arg2
+        else:
+            from_date = sys.argv[2]
+    
+    if len(sys.argv) > 3:
+        arg3 = sys.argv[3].upper()
+        if arg3 in VALID_INTERVALS and interval is None:
+            interval = arg3
+        else:
+            to_date = sys.argv[3]
+    
+    if len(sys.argv) > 4:
+        arg4 = sys.argv[4].upper()
+        if arg4 in VALID_INTERVALS and interval is None:
+            interval = arg4
+        else:
+            to_date = sys.argv[4]
+    
     run_backtest_pipeline(symbol=symbol, from_date=from_date, to_date=to_date, interval=interval)

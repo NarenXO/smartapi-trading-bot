@@ -24,6 +24,9 @@ def main():
     for symbol in Config.TARGET_SYMBOLS:
         print(f"\n--- Validating {symbol} ---")
         
+        backtest_error = ""
+        walkforward_error = ""
+        
         # Run live backtest
         print(f"  [1/2] Running live backtest for {symbol}...")
         try:
@@ -34,9 +37,12 @@ def main():
                 timeout=120
             )
             backtest_success = result.returncode == 0
+            if not backtest_success:
+                backtest_error = (result.stderr or result.stdout)[:80]
         except Exception as e:
             print(f"  ERROR: {e}")
             backtest_success = False
+            backtest_error = str(e)[:80]
 
         # Run walk-forward
         print(f"  [2/2] Running walk-forward for {symbol}...")
@@ -48,9 +54,12 @@ def main():
                 timeout=120
             )
             walkforward_success = result.returncode == 0
+            if not walkforward_success:
+                walkforward_error = (result.stderr or result.stdout)[:80]
         except Exception as e:
             print(f"  ERROR: {e}")
             walkforward_success = False
+            walkforward_error = str(e)[:80]
 
         # Read JSON reports for metrics
         backtest_path = f"data/backtest_report_{symbol}.json"
@@ -72,10 +81,14 @@ def main():
             except Exception:
                 pass
 
+        # PASS only if report JSON exists and fetch succeeded
+        backtest_pass = backtest_success and os.path.exists(backtest_path)
+        walkforward_pass = walkforward_success and os.path.exists(walkforward_path)
+
         results.append({
             "symbol": symbol,
-            "backtest": "PASS" if backtest_success else "FAIL",
-            "walk_forward": "PASS" if walkforward_success else "FAIL",
+            "backtest": "PASS" if backtest_pass else f"FAIL ({backtest_error})" if backtest_error else "FAIL",
+            "walk_forward": "PASS" if walkforward_pass else f"FAIL ({walkforward_error})" if walkforward_error else "FAIL",
             "net_pnl": backtest_metrics.get("net_pnl", "N/A"),
             "trades": backtest_metrics.get("trades", "N/A"),
             "pf": backtest_metrics.get("profit_factor", "N/A"),

@@ -1,7 +1,7 @@
 """
-Walk-forward validation on REAL SmartAPI daily data.
-Train window: WALK_FORWARD_TRAIN_DAYS
-Test window: WALK_FORWARD_TEST_DAYS (untouched)
+Walk-forward validation on REAL SmartAPI data.
+Train window: WALK_FORWARD_TRAIN_DAYS (trading days)
+Test window: WALK_FORWARD_TEST_DAYS (trading days, untouched)
 No parameter optimization grid in v1 — reports baseline params performance on train vs test.
 If train looks good and test collapses, print OVERFIT_WARNING.
 """
@@ -9,6 +9,7 @@ import sys
 import json
 import os
 import pandas as pd
+from datetime import datetime, timedelta
 from tabulate import tabulate
 from src.config import Config
 from src.auth import SmartAPIAuth
@@ -17,6 +18,43 @@ from src.historical import HistoricalDataFetcher
 from src.strategy import Strategy
 from src.backtest import Backtester
 from src.metrics import PerformanceMetrics
+
+VALID_INTERVALS = {
+    "ONE_MINUTE", "THREE_MINUTE", "FIVE_MINUTE", "TEN_MINUTE", 
+    "FIFTEEN_MINUTE", "THIRTY_MINUTE", "ONE_HOUR", "ONE_DAY"
+}
+
+def resolve_date_range(interval: str):
+    """Resolve from_date and to_date based on interval type."""
+    now = datetime.now()
+    today = now.date()
+    
+    if interval == "ONE_DAY":
+        # Use config defaults for daily
+        from_date = Config.BACKTEST_FROM
+        to_date = Config.BACKTEST_TO
+        # Validate from_date looks like a date
+        if from_date and "-" in from_date and any(c.isdigit() for c in from_date):
+            pass  # Use config
+        else:
+            from_date = "2024-01-01 09:15"
+        # Cap to_date to today
+        if to_date and "-" in to_date:
+            try:
+                to_dt = datetime.strptime(to_date.split()[0], "%Y-%m-%d")
+                if to_dt.date() > today:
+                    to_date = f"{today} 15:30"
+            except:
+                to_date = f"{today} 15:30"
+        else:
+            to_date = f"{today} 15:30"
+    else:
+        # Intraday: default to last 250 calendar days for walk-forward (more history needed)
+        from_dt = now - timedelta(days=250)
+        from_date = from_dt.strftime("%Y-%m-%d 09:15")
+        to_date = now.strftime("%Y-%m-%d 15:30")
+    
+    return from_date, to_date
 
 def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     print("\n========================================================")
@@ -52,12 +90,15 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     print("[3/4] Fetching Historical Candles for full range...")
     fetcher = HistoricalDataFetcher(smart_api)
     
+    # Resolve dates based on interval
+    from_date, to_date = resolve_date_range(interval)
+    
     # Try preferred interval first (FIFTEEN_MINUTE for ORB realism)
     df_data = fetcher.fetch_candles(
         symbol_token=token,
         interval=interval,
-        from_date=Config.BACKTEST_FROM,
-        to_date=Config.BACKTEST_TO
+        from_date=from_date,
+        to_date=to_date
     )
     
     orb_mode = "INTRADAY_15M" if interval == "FIFTEEN_MINUTE" else "DAILY_PROXY"
@@ -65,34 +106,51 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     # Fall back to ONE_DAY if FIFTEEN_MINUTE fails or returns too few bars
     if df_data is None or df_data.empty or len(df_data) < 30:
         print(f"       {interval} fetch failed or insufficient bars. Falling back to ONE_DAY (ORB_MODE=DAILY_PROXY).")
+        daily_from, daily_to = resolve_date_range("ONE_DAY")
         df_data = fetcher.fetch_candles(
             symbol_token=token,
             interval="ONE_DAY",
-            from_date=Config.BACKTEST_FROM,
-            to_date=Config.BACKTEST_TO
+            from_date=daily_from,
+            to_date=daily_to
         )
         orb_mode = "DAILY_PROXY"
+        from_date = daily_from
+        to_date = daily_to
+        interval = "ONE_DAY"
     
     if df_data is None or df_data.empty:
-        print("[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data")
+        print(f"[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data for {symbol}")
+        print(f"       Interval: {interval}, From: {from_date}, To: {to_date}")
+        print(f"       SmartAPI returned empty response. Check API limits or date range.")
         sys.exit(1)
 
     print(f"       Successfully fetched {len(df_data)} historical candles (ORB_MODE: {orb_mode}).")
 
-    # 4. Split into train and test windows
+    # 4. Split by trading days, not bar count
+    df_data["timestamp"] = pd.to_datetime(df_data["timestamp"], errors="coerce")
+    unique_days = sorted(df_data["timestamp"].dt.date.unique())
+    
     train_days = Config.WALK_FORWARD_TRAIN_DAYS
     test_days = Config.WALK_FORWARD_TEST_DAYS
     
-    if len(df_data) < (train_days + test_days):
-        print(f"[ERROR] Insufficient data for walk-forward. Need {train_days + test_days} candles, got {len(df_data)}")
-        sys.exit(1)
-
-    df_train = df_data.iloc[:train_days].copy()
-    df_test = df_data.iloc[train_days:train_days + test_days].copy()
+    if len(unique_days) < (train_days + test_days):
+        # Use largest possible split if insufficient days
+        print(f"[WARNING] WARNING_SHORT_HISTORY: Need {train_days + test_days} trading days, got {len(unique_days)}")
+        print(f"       Using 70% train / 30% test split instead.")
+        split_idx = int(len(unique_days) * 0.7)
+        train_day_list = unique_days[:split_idx]
+        test_day_list = unique_days[split_idx:]
+    else:
+        train_day_list = unique_days[:train_days]
+        test_day_list = unique_days[train_days:train_days + test_days]
+    
+    # Filter bars by trading days
+    df_train = df_data[df_data["timestamp"].dt.date.isin(train_day_list)].copy()
+    df_test = df_data[df_data["timestamp"].dt.date.isin(test_day_list)].copy()
 
     print(f"[4/4] Running Walk-Forward Analysis...")
-    print(f"       Train window: {len(df_train)} candles")
-    print(f"       Test window: {len(df_test)} candles (untouched)\n")
+    print(f"       Train window: {len(train_day_list)} trading days ({len(df_train)} bars)")
+    print(f"       Test window: {len(test_day_list)} trading days ({len(df_test)} bars, untouched)\n")
 
     strategy = Strategy()
     backtester = Backtester(initial_capital=Config.DEFAULT_CAPITAL, max_trade_pct=0.25)
@@ -119,7 +177,7 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     table_data = [
         ["Strategy Mode", Config.STRATEGY_MODE, Config.STRATEGY_MODE],
         ["ORB Mode", orb_mode, orb_mode],
-        ["Data Window", f"TRAIN ({len(df_train)} bars)", f"TEST ({len(df_test)} bars)"],
+        ["Data Window", f"TRAIN ({len(train_day_list)} days, {len(df_train)} bars)", f"TEST ({len(test_day_list)} days, {len(df_test)} bars)"],
         ["Net PnL", f"INR {results_train['total_net_pnl']}", f"INR {results_test['total_net_pnl']}"],
         ["Win Rate (%)", f"{results_train['win_rate_pct']}%", f"{results_test['win_rate_pct']}%"],
         ["Profit Factor", f"{metrics_train['profit_factor']}", f"{metrics_test['profit_factor']}"],
@@ -153,8 +211,10 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
         "strategy_mode": Config.STRATEGY_MODE,
         "orb_mode": orb_mode,
         "symbol": symbol,
-        "train_days": train_days,
-        "test_days": test_days,
+        "train_trading_days": len(train_day_list),
+        "test_trading_days": len(test_day_list),
+        "train_bars": len(df_train),
+        "test_bars": len(df_test),
         "train": {
             "net_pnl": results_train['total_net_pnl'],
             "win_rate_pct": results_train['win_rate_pct'],
@@ -179,5 +239,9 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
 
 if __name__ == "__main__":
     symbol = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
-    interval = sys.argv[2] if len(sys.argv) > 2 else None
+    interval = None
+    if len(sys.argv) > 2:
+        arg2 = sys.argv[2].upper()
+        if arg2 in VALID_INTERVALS:
+            interval = arg2
     run_walk_forward(symbol=symbol, interval=interval)
