@@ -8,6 +8,7 @@ import sys
 import subprocess
 import json
 import os
+import time
 from tabulate import tabulate
 from src.config import Config
 
@@ -16,12 +17,25 @@ def main():
     print("      ORB+VWAP+ADX+VOLUME BASELINE VALIDATION")
     print("========================================================")
     print(f"Strategy Mode: {Config.STRATEGY_MODE}")
-    print(f"Symbols: {Config.TARGET_SYMBOLS}")
+    
+    # Default to first symbol only unless --all flag
+    symbols = Config.TARGET_SYMBOLS
+    if "--all" not in sys.argv:
+        symbols = [symbols[0]] if symbols else []
+        print(f"Symbols: {symbols} (use --all for all symbols)")
+    else:
+        print(f"Symbols: {symbols}")
+    
     print("\nNOTE: NO_EDGE_CLAIMED — numbers only for diagnostics.\n")
 
     results = []
+    rate_limit_detected = False
 
-    for symbol in Config.TARGET_SYMBOLS:
+    for i, symbol in enumerate(symbols):
+        if rate_limit_detected:
+            print(f"\n[STOP_RATE_LIMIT] Skipping remaining symbols due to rate limit")
+            break
+        
         print(f"\n--- Validating {symbol} ---")
         
         backtest_error = ""
@@ -38,11 +52,22 @@ def main():
             )
             backtest_success = result.returncode == 0
             if not backtest_success:
-                backtest_error = (result.stderr or result.stdout)[:80]
+                # Capture error line containing "rate" or "ERROR"
+                for line in (result.stderr + result.stdout).split('\n'):
+                    if "rate" in line.lower() or "ERROR" in line:
+                        backtest_error = line[:80]
+                        if "rate" in line.lower():
+                            rate_limit_detected = True
+                        break
         except Exception as e:
             print(f"  ERROR: {e}")
             backtest_success = False
             backtest_error = str(e)[:80]
+            if "rate" in str(e).lower():
+                rate_limit_detected = True
+
+        # Delay between backtest and walk-forward
+        time.sleep(5)
 
         # Run walk-forward
         print(f"  [2/2] Running walk-forward for {symbol}...")
@@ -55,11 +80,18 @@ def main():
             )
             walkforward_success = result.returncode == 0
             if not walkforward_success:
-                walkforward_error = (result.stderr or result.stdout)[:80]
+                for line in (result.stderr + result.stdout).split('\n'):
+                    if "rate" in line.lower() or "ERROR" in line:
+                        walkforward_error = line[:80]
+                        if "rate" in line.lower():
+                            rate_limit_detected = True
+                        break
         except Exception as e:
             print(f"  ERROR: {e}")
             walkforward_success = False
             walkforward_error = str(e)[:80]
+            if "rate" in str(e).lower():
+                rate_limit_detected = True
 
         # Read JSON reports for metrics
         backtest_path = f"data/backtest_report_{symbol}.json"
@@ -96,6 +128,10 @@ def main():
             "pf_test": walkforward_metrics.get("test", {}).get("profit_factor", "N/A")
         })
 
+        # Delay between symbols (except last)
+        if i < len(symbols) - 1 and not rate_limit_detected:
+            time.sleep(20)
+
     # Print summary matrix with metrics
     print("\n========================================================")
     print("      VALIDATION SUMMARY")
@@ -119,6 +155,11 @@ def main():
     print("\n========================================================")
     print("NO_EDGE_CLAIMED — numbers only for diagnostics.")
     print("========================================================\n")
+    
+    if rate_limit_detected:
+        print("[STOP_RATE_LIMIT] Validation stopped early due to SmartAPI rate limit.")
+        print("Run again later or use cached results from data/candle_cache/\n")
+        sys.exit(2)
 
 if __name__ == "__main__":
     main()

@@ -25,6 +25,7 @@ wheels/
 .pytest_cache/
 logs/
 data/*.json
+data/candle_cache/
 trades_*.csv
 logs/*.csv
 !logs/.gitkeep

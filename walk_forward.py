@@ -8,6 +8,7 @@ If train looks good and test collapses, print OVERFIT_WARNING.
 import sys
 import json
 import os
+import time
 import pandas as pd
 from datetime import datetime, timedelta
 from tabulate import tabulate
@@ -61,8 +62,8 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     print(f"      WALK-FORWARD VALIDATION: {symbol}")
     print("========================================================\n")
 
-    # Phase 15: Prefer FIFTEEN_MINUTE for ORB realism
-    interval = interval or "FIFTEEN_MINUTE"
+    # Prefer VALIDATION_INTERVAL from config for validation runs
+    interval = interval or getattr(Config, "VALIDATION_INTERVAL", "ONE_DAY")
 
     # 1. Require real SmartAPI credentials
     if not Config.validate_creds():
@@ -72,6 +73,7 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     print("[1/4] Authenticating with Angel One SmartAPI...")
     auth = SmartAPIAuth()
     smart_api = auth.login()
+    time.sleep(2)  # Delay after login to avoid rate limit
 
     if not smart_api:
         print("[ERROR] REAL_DATA_REQUIRED: SmartAPI authentication failed")
@@ -106,6 +108,7 @@ def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     # Fall back to ONE_DAY if FIFTEEN_MINUTE fails or returns too few bars
     if df_data is None or df_data.empty or len(df_data) < 30:
         print(f"       {interval} fetch failed or insufficient bars. Falling back to ONE_DAY (ORB_MODE=DAILY_PROXY).")
+        time.sleep(10)  # Delay before fallback to avoid rate limit
         daily_from, daily_to = resolve_date_range("ONE_DAY")
         df_data = fetcher.fetch_candles(
             symbol_token=token,

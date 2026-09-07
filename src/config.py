@@ -80,6 +80,9 @@ class Config:
     BACKTEST_TO = os.getenv("BACKTEST_TO", "2024-12-31 15:30")
     WALK_FORWARD_TRAIN_DAYS = int(os.getenv("WALK_FORWARD_TRAIN_DAYS", "120"))
     WALK_FORWARD_TEST_DAYS = int(os.getenv("WALK_FORWARD_TEST_DAYS", "60"))
+    VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "ONE_DAY")
+    API_RETRY_MAX = int(os.getenv("API_RETRY_MAX", "5"))
+    API_RETRY_BASE_SLEEP = int(os.getenv("API_RETRY_BASE_SLEEP", "5"))
     
     # Cost & Tax Structure (NSE Equities Intraday / Swing estimates)
     BROKERAGE_PER_ORDER = 20.0  # ₹20 flat or 0.03% (Angel One standard)
