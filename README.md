@@ -70,27 +70,28 @@ The bot now includes institutional-grade data layers using free NSE APIs:
 
 All filters are configurable via environment variables and can be toggled independently. The system uses fail-open behavior when NSE data is blocked (logs warning, does not crash bot).
 
-## Phase 14: Strategy Validation
+## Phase 15: ORB+VWAP+ADX+Volume Baseline
 
-The bot now includes a baseline strategy mode and real data validation tools:
+The baseline strategy has been updated to replace the failed EMA crossover with a 3-condition structural approach:
 
-- **Default STRATEGY_MODE=BASELINE**: EMA 9/21 cross + volume confirmation (2-factor, validated path). No multi-factor confluence by default.
-- **CONFLUENCE Mode**: Optional experimental multi-factor mode (RSI, VWAP, POC, predictive slope sign) - OFF by default, requires explicit opt-in via .env.
-- **Optional Gates OFF by Default**: FII/DII, sector rotation, option OI, corporate actions, ranking - all disabled for clean A/B testing. Enable one at a time and re-validate.
-- **Real Data Validation**: Use `run_live_backtest.py` for validation on actual SmartAPI historical data with full cost model. No silent mock fallback.
-- **Walk-Forward Testing**: Use `walk_forward.py` to test on untouched out-of-sample data and detect overfitting.
-- **Honest Predictive Stats**: Removed fake "probability" from linear regression - now returns slope, r-squared, p-value only (diagnostics, not trade probability).
+- **Buy Signal**: Price breaks above Opening Range Breakout (ORB) high + Close >= VWAP + ADX >= 25 + Volume surge
+- **Sell Signal**: Close breaks back below ORB high (failed breakout) or below ORB low
+- **Intraday ORB**: Uses first ORB_MINUTES (default 15) of session to establish range
+- **Daily Proxy**: For historical ONE_DAY backtests, uses prior day's high/low as ORB proxy
+- **Validation Tools**: `run_live_backtest.py` and `walk_forward.py` prefer FIFTEEN_MINUTE data for ORB realism, fall back to ONE_DAY with explicit ORB_MODE indicator
 
 ### Validation Commands
 
 ```bash
 # Real data validation (requires SmartAPI credentials)
 python run_live_backtest.py RELIANCE
+python run_live_backtest.py RELIANCE FIFTEEN_MINUTE  # Prefer 15m for ORB
 
 # Walk-forward validation (train vs test on untouched data)
 python walk_forward.py RELIANCE
+python walk_forward.py RELIANCE FIFTEEN_MINUTE
 
-# One-click baseline validation for all symbols
+# One-click baseline validation for all symbols (shows metrics from JSON reports)
 python validate_baseline.py
 
 # Synthetic smoke test only (NOT strategy validation)
@@ -99,8 +100,8 @@ python run_backtest.py
 
 ### Important Notes
 
-- **Complexity does not equal edge**. The baseline 2-factor strategy is the validated path.
-- Optional factors must be enabled one at a time and re-validated before use.
+- **Complexity does not equal edge**. The baseline 3-condition strategy is the validated path.
+- Optional institutional gates remain OFF by default for clean A/B testing.
 - The system uses fail-open behavior for external data (logs warning, does not crash).
 - No paid data vendors are used - all institutional data comes from free NSE APIs.
 

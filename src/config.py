@@ -59,6 +59,12 @@ class Config:
 
     # Phase 14: Strategy Mode & Validation
     STRATEGY_MODE = os.getenv("STRATEGY_MODE", "BASELINE").upper()
+    # Phase 15: ORB+VWAP+ADX+Volume parameters
+    ORB_MINUTES = int(os.getenv("ORB_MINUTES", "15"))
+    ADX_PERIOD = int(os.getenv("ADX_PERIOD", "14"))
+    ADX_MIN = float(os.getenv("ADX_MIN", "25"))
+    ORB_REQUIRE_ABOVE_VWAP = os.getenv("ORB_REQUIRE_ABOVE_VWAP", "True").lower() in ("true", "1", "yes")
+    # Legacy EMA parameters (kept for CONFLUENCE mode only)
     EMA_FAST = int(os.getenv("EMA_FAST", "9"))
     EMA_SLOW = int(os.getenv("EMA_SLOW", "21"))
     RSI_PERIOD = int(os.getenv("RSI_PERIOD", "14"))

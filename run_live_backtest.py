@@ -11,7 +11,7 @@ from src.strategy import Strategy
 from src.backtest import Backtester
 from src.metrics import PerformanceMetrics
 
-def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_date: str = None):
+def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_date: str = None, interval: str = None):
     print("\n========================================================")
     print(f"      REAL DATA VALIDATION BACKTEST: {symbol}")
     print("========================================================\n")
@@ -19,6 +19,8 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_da
     # Use config defaults if not provided
     from_date = from_date or Config.BACKTEST_FROM
     to_date = to_date or Config.BACKTEST_TO
+    # Phase 15: Prefer FIFTEEN_MINUTE for ORB realism
+    interval = interval or "FIFTEEN_MINUTE"
 
     # 1. Require real SmartAPI credentials - no mock fallback for validation
     if not Config.validate_creds():
@@ -46,18 +48,33 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_da
 
     print("[3/5] Fetching Historical Candles...")
     fetcher = HistoricalDataFetcher(smart_api)
+    
+    # Try preferred interval first (FIFTEEN_MINUTE for ORB realism)
     df_data = fetcher.fetch_candles(
         symbol_token=token,
-        interval="ONE_DAY",
+        interval=interval,
         from_date=from_date,
         to_date=to_date
     )
-
+    
+    orb_mode = "INTRADAY_15M" if interval == "FIFTEEN_MINUTE" else "DAILY_PROXY"
+    
+    # Fall back to ONE_DAY if FIFTEEN_MINUTE fails or returns too few bars
+    if df_data is None or df_data.empty or len(df_data) < 30:
+        print(f"       {interval} fetch failed or insufficient bars. Falling back to ONE_DAY (ORB_MODE=DAILY_PROXY).")
+        df_data = fetcher.fetch_candles(
+            symbol_token=token,
+            interval="ONE_DAY",
+            from_date=from_date,
+            to_date=to_date
+        )
+        orb_mode = "DAILY_PROXY"
+    
     if df_data is None or df_data.empty:
         print("[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data")
         sys.exit(1)
 
-    print(f"       Successfully fetched {len(df_data)} historical candles.")
+    print(f"       Successfully fetched {len(df_data)} historical candles (ORB_MODE: {orb_mode}).")
 
     # 4. Run Strategy and Backtest
     print(f"[4/5] Executing Strategy ({Config.STRATEGY_MODE}) & Cost Calculation...")
@@ -84,6 +101,7 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_da
 
     table_data = [
         ["Strategy Mode", Config.STRATEGY_MODE],
+        ["ORB Mode", orb_mode],
         ["Target Symbol", results['symbol']],
         ["Data Source", "REAL SMARTAPI"],
         ["Date Range", f"{from_date} to {to_date}"],
@@ -109,6 +127,7 @@ def run_backtest_pipeline(symbol: str = "RELIANCE", from_date: str = None, to_da
     report_path = f"data/backtest_report_{symbol}.json"
     report = {
         "strategy_mode": Config.STRATEGY_MODE,
+        "orb_mode": orb_mode,
         "symbol": symbol,
         "from_date": from_date,
         "to_date": to_date,
@@ -130,4 +149,5 @@ if __name__ == "__main__":
     symbol = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
     from_date = sys.argv[2] if len(sys.argv) > 2 else None
     to_date = sys.argv[3] if len(sys.argv) > 3 else None
-    run_backtest_pipeline(symbol=symbol, from_date=from_date, to_date=to_date)
+    interval = sys.argv[4] if len(sys.argv) > 4 else None
+    run_backtest_pipeline(symbol=symbol, from_date=from_date, to_date=to_date, interval=interval)

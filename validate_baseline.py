@@ -1,17 +1,19 @@
 """
 One-click validation runner.
 Runs walk_forward + live backtest for each symbol in TARGET_SYMBOLS.
-Prints summary matrix.
+Prints summary matrix with metrics from saved JSON reports.
 States clearly: NO_EDGE_CLAIMED — numbers only.
 """
 import sys
 import subprocess
+import json
+import os
 from tabulate import tabulate
 from src.config import Config
 
 def main():
     print("\n========================================================")
-    print("      BASELINE VALIDATION SUITE")
+    print("      ORB+VWAP+ADX+VOLUME BASELINE VALIDATION")
     print("========================================================")
     print(f"Strategy Mode: {Config.STRATEGY_MODE}")
     print(f"Symbols: {Config.TARGET_SYMBOLS}")
@@ -50,19 +52,56 @@ def main():
             print(f"  ERROR: {e}")
             walkforward_success = False
 
+        # Read JSON reports for metrics
+        backtest_path = f"data/backtest_report_{symbol}.json"
+        walkforward_path = f"data/walk_forward_{symbol}.json"
+        
+        backtest_metrics = {}
+        if os.path.exists(backtest_path):
+            try:
+                with open(backtest_path, "r") as f:
+                    backtest_metrics = json.load(f)
+            except Exception:
+                pass
+        
+        walkforward_metrics = {}
+        if os.path.exists(walkforward_path):
+            try:
+                with open(walkforward_path, "r") as f:
+                    walkforward_metrics = json.load(f)
+            except Exception:
+                pass
+
         results.append({
             "symbol": symbol,
             "backtest": "PASS" if backtest_success else "FAIL",
-            "walk_forward": "PASS" if walkforward_success else "FAIL"
+            "walk_forward": "PASS" if walkforward_success else "FAIL",
+            "net_pnl": backtest_metrics.get("net_pnl", "N/A"),
+            "trades": backtest_metrics.get("trades", "N/A"),
+            "pf": backtest_metrics.get("profit_factor", "N/A"),
+            "pf_train": walkforward_metrics.get("train", {}).get("profit_factor", "N/A"),
+            "pf_test": walkforward_metrics.get("test", {}).get("profit_factor", "N/A")
         })
 
-    # Print summary matrix
+    # Print summary matrix with metrics
     print("\n========================================================")
     print("      VALIDATION SUMMARY")
     print("========================================================\n")
     
-    table_data = [[r["symbol"], r["backtest"], r["walk_forward"]] for r in results]
-    print(tabulate(table_data, headers=["Symbol", "Live Backtest", "Walk-Forward"], tablefmt="grid"))
+    table_data = [
+        [
+            r["symbol"],
+            r["backtest"],
+            r["walk_forward"],
+            r["net_pnl"],
+            r["trades"],
+            r["pf"],
+            r["pf_train"],
+            r["pf_test"]
+        ]
+        for r in results
+    ]
+    print(tabulate(table_data, headers=["Symbol", "Live Backtest", "Walk-Forward", "Net PnL", "Trades", "PF", "PF Train", "PF Test"], tablefmt="grid"))
     
     print("\n========================================================")
     print("NO_EDGE_CLAIMED — numbers only for diagnostics.")

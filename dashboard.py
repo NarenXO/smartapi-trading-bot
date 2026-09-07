@@ -306,9 +306,16 @@ with tab_logs:
 with tab_scan:
     st.subheader("Scanner Status (Why No Trade)")
     from src.scan_status import ScanStatus
+    from src.config import Config
     scan_data = ScanStatus.read()
     
-    st.caption(f"Strategy Mode: **{scan_data.get('mode', 'UNKNOWN')}**")
+    mode = scan_data.get('mode', 'UNKNOWN')
+    if mode == "BASELINE":
+        strategy_name = "ORB + VWAP + ADX + Volume (BASELINE)"
+    else:
+        strategy_name = f"{mode} (EXPERIMENTAL)"
+    
+    st.caption(f"Strategy: **{strategy_name}**")
     st.caption(f"Last Updated: **{scan_data.get('updated_at', 'NEVER')}**")
     st.caption(f"Open Positions: **{', '.join(scan_data.get('open_positions', [])) or 'None'}**")
     

@@ -18,10 +18,13 @@ from src.strategy import Strategy
 from src.backtest import Backtester
 from src.metrics import PerformanceMetrics
 
-def run_walk_forward(symbol: str = "RELIANCE"):
+def run_walk_forward(symbol: str = "RELIANCE", interval: str = None):
     print("\n========================================================")
     print(f"      WALK-FORWARD VALIDATION: {symbol}")
     print("========================================================\n")
+
+    # Phase 15: Prefer FIFTEEN_MINUTE for ORB realism
+    interval = interval or "FIFTEEN_MINUTE"
 
     # 1. Require real SmartAPI credentials
     if not Config.validate_creds():
@@ -48,18 +51,33 @@ def run_walk_forward(symbol: str = "RELIANCE"):
 
     print("[3/4] Fetching Historical Candles for full range...")
     fetcher = HistoricalDataFetcher(smart_api)
+    
+    # Try preferred interval first (FIFTEEN_MINUTE for ORB realism)
     df_data = fetcher.fetch_candles(
         symbol_token=token,
-        interval="ONE_DAY",
+        interval=interval,
         from_date=Config.BACKTEST_FROM,
         to_date=Config.BACKTEST_TO
     )
-
+    
+    orb_mode = "INTRADAY_15M" if interval == "FIFTEEN_MINUTE" else "DAILY_PROXY"
+    
+    # Fall back to ONE_DAY if FIFTEEN_MINUTE fails or returns too few bars
+    if df_data is None or df_data.empty or len(df_data) < 30:
+        print(f"       {interval} fetch failed or insufficient bars. Falling back to ONE_DAY (ORB_MODE=DAILY_PROXY).")
+        df_data = fetcher.fetch_candles(
+            symbol_token=token,
+            interval="ONE_DAY",
+            from_date=Config.BACKTEST_FROM,
+            to_date=Config.BACKTEST_TO
+        )
+        orb_mode = "DAILY_PROXY"
+    
     if df_data is None or df_data.empty:
         print("[ERROR] REAL_DATA_REQUIRED: Failed to fetch historical data")
         sys.exit(1)
 
-    print(f"       Successfully fetched {len(df_data)} historical candles.")
+    print(f"       Successfully fetched {len(df_data)} historical candles (ORB_MODE: {orb_mode}).")
 
     # 4. Split into train and test windows
     train_days = Config.WALK_FORWARD_TRAIN_DAYS
@@ -100,7 +118,8 @@ def run_walk_forward(symbol: str = "RELIANCE"):
     # Print side-by-side comparison
     table_data = [
         ["Strategy Mode", Config.STRATEGY_MODE, Config.STRATEGY_MODE],
-        ["Data Window", f"TRAIN ({len(df_train)} days)", f"TEST ({len(df_test)} days)"],
+        ["ORB Mode", orb_mode, orb_mode],
+        ["Data Window", f"TRAIN ({len(df_train)} bars)", f"TEST ({len(df_test)} bars)"],
         ["Net PnL", f"INR {results_train['total_net_pnl']}", f"INR {results_test['total_net_pnl']}"],
         ["Win Rate (%)", f"{results_train['win_rate_pct']}%", f"{results_test['win_rate_pct']}%"],
         ["Profit Factor", f"{metrics_train['profit_factor']}", f"{metrics_test['profit_factor']}"],
@@ -132,6 +151,7 @@ def run_walk_forward(symbol: str = "RELIANCE"):
     report_path = f"data/walk_forward_{symbol}.json"
     report = {
         "strategy_mode": Config.STRATEGY_MODE,
+        "orb_mode": orb_mode,
         "symbol": symbol,
         "train_days": train_days,
         "test_days": test_days,
@@ -159,4 +179,5 @@ def run_walk_forward(symbol: str = "RELIANCE"):
 
 if __name__ == "__main__":
     symbol = sys.argv[1] if len(sys.argv) > 1 else "RELIANCE"
-    run_walk_forward(symbol=symbol)
+    interval = sys.argv[2] if len(sys.argv) > 2 else None
+    run_walk_forward(symbol=symbol, interval=interval)
